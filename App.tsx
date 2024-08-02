@@ -7,12 +7,28 @@ import {
   FlatList,
   ScrollView,
   useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { photos } from './data';
 import Carousel from './Carousel';
+import { useState } from 'react';
 
 export default function App() {
   const { height, width } = useWindowDimensions();
+  const [headerCarouselPage, setHeaderCarouselPage] = useState(0);
+
+  const onHeaderCarouselScroll = (
+    e: NativeSyntheticEvent<NativeScrollEvent>
+  ) => {
+    const curPage = Math.max(
+      0,
+      Math.floor((e.nativeEvent.contentOffset.x + width / 2) / width)
+    );
+    if (curPage !== headerCarouselPage) {
+      setHeaderCarouselPage(curPage);
+    }
+  };
 
   return (
     <ScrollView style={styles.container}>
@@ -24,6 +40,7 @@ export default function App() {
         snapToAlignment="start"
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
+        onScroll={onHeaderCarouselScroll}
       >
         <FlatList
           style={{ width }}
@@ -51,6 +68,31 @@ export default function App() {
           resizeMode="cover"
         />
       </ScrollView>
+
+      <View
+        style={{
+          padding: 10,
+          justifyContent: 'center',
+          alignItems: 'center',
+          flexDirection: 'row',
+          gap: 5,
+        }}
+      >
+        {Array(3)
+          .fill(0)
+          .map((item, index) => (
+            <View
+              key={index}
+              style={{
+                width: index === headerCarouselPage ? 10 : 8,
+                aspectRatio: 1,
+                backgroundColor:
+                  index === headerCarouselPage ? 'black' : 'gray',
+                borderRadius: 5,
+              }}
+            />
+          ))}
+      </View>
 
       <Carousel title="Albums" photos={photos.slice(0, 6)} />
       <Carousel title="People" photos={photos.slice(3, 6)} />

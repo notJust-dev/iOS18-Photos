@@ -9,10 +9,12 @@ import {
   useWindowDimensions,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Pressable,
 } from 'react-native';
-import { photos } from './data';
-import Carousel from './Carousel';
+import { photos } from '../data';
+import Carousel from '../Carousel';
 import { useState } from 'react';
+import { Link } from 'expo-router';
 
 export default function App() {
   const { height, width } = useWindowDimensions();
@@ -51,10 +53,14 @@ export default function App() {
           scrollEnabled={false}
           inverted
           renderItem={({ item }) => (
-            <Image
-              source={item.image}
-              style={{ width: `${100 / 4}%`, aspectRatio: 1 }}
-            />
+            <Link href={`/photo/${item.id}`} asChild>
+              <Pressable style={{ width: `${100 / 4}%`, aspectRatio: 1 }}>
+                <Image
+                  source={item.image}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </Pressable>
+            </Link>
           )}
         />
         <Image

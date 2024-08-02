@@ -16,10 +16,16 @@ import Carousel from '../Carousel';
 import { useEffect, useState } from 'react';
 import { Link } from 'expo-router';
 import Animated, {
+  scrollTo,
+  useAnimatedReaction,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 export default function App() {
   const { height, width } = useWindowDimensions();
@@ -27,6 +33,16 @@ export default function App() {
 
   const scale = useSharedValue(1.2);
   const pageScrollViewPosition = useSharedValue(0);
+  const gestureScrollPosition = useSharedValue(height / 2);
+
+  const flatListRef = useAnimatedRef<Animated.FlatList<any>>();
+  const pageScrollViewRef = useAnimatedRef<Animated.ScrollView>();
+
+  const scrollMode = useSharedValue<'PAGE' | 'GESTURE' | 'FLAT_LIST'>('PAGE');
+  const pageScrollEnabled = useDerivedValue(() => scrollMode.value === 'PAGE');
+  const flatListScrollEnabled = useDerivedValue(
+    () => scrollMode.value === 'FLAT_LIST'
+  );
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -37,9 +53,46 @@ export default function App() {
     scale.value = withTiming(1, { duration: 6000 });
   }, [headerCarouselPage]);
 
-  const onPageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    pageScrollViewPosition.value = e.nativeEvent.contentOffset.y;
-  };
+  useAnimatedReaction(
+    () => scrollMode.value,
+    (current, previous) => {
+      if (current !== previous) {
+        console.log('SCROLL MODE: ', current);
+      }
+    }
+  );
+
+  useAnimatedReaction(
+    () => gestureScrollPosition.value,
+    (current, previous) => {
+      if (current === previous) {
+        return;
+      }
+
+      if (current < height / 2 && scrollMode.value !== 'PAGE') {
+        scrollMode.value = 'PAGE';
+      }
+
+      if (current === height && scrollMode.value !== 'FLAT_LIST') {
+        scrollMode.value = 'FLAT_LIST';
+      }
+    }
+  );
+
+  const onPageScroll = useAnimatedScrollHandler((e) => {
+    pageScrollViewPosition.value = e.contentOffset.y;
+    if (e.contentOffset.y < 0 && scrollMode.value !== 'GESTURE') {
+      scrollMode.value = 'GESTURE';
+      scrollTo(pageScrollViewRef, 0, 0, true);
+    }
+  });
+
+  const onFlatListScroll = useAnimatedScrollHandler((e) => {
+    if (e.contentOffset.y < 0 && scrollMode.value === 'FLAT_LIST') {
+      scrollMode.value = 'GESTURE';
+      scrollTo(flatListRef, 0, 0, true);
+    }
+  });
 
   const onHeaderCarouselScroll = (
     e: NativeSyntheticEvent<NativeScrollEvent>
@@ -53,104 +106,132 @@ export default function App() {
     }
   };
 
+  const gesture = Gesture.Pan()
+    .onChange((e) => {
+      gestureScrollPosition.value += e.changeY;
+    })
+    .onEnd((e) => {
+      gestureScrollPosition.value = withTiming(
+        e.velocityY > 0 ? height : height / 2
+      );
+    });
+
+  const headerStyle = useAnimatedStyle(() => ({
+    height: gestureScrollPosition.value,
+  }));
+
+  // const nativeGesture = Gesture.Native();
+  // const composedGesture = Gesture.Simultaneous(gesture, nativeGesture);
+
   return (
-    <ScrollView style={[styles.container]} onScroll={onPageScroll}>
-      {/* Header */}
-      <ScrollView
-        horizontal
-        style={{ height: height / 2 }}
-        snapToInterval={width}
-        snapToAlignment="start"
-        decelerationRate="fast"
-        showsHorizontalScrollIndicator={false}
-        onScroll={onHeaderCarouselScroll}
+    <GestureDetector gesture={gesture}>
+      <Animated.ScrollView
+        ref={pageScrollViewRef}
+        scrollEnabled={pageScrollEnabled}
+        style={[styles.container]}
+        onScroll={onPageScroll}
       >
-        <FlatList
-          style={{ width }}
-          data={photos}
-          numColumns={4}
-          contentContainerStyle={{ gap: 2 }}
-          columnWrapperStyle={{ gap: 2 }}
-          scrollEnabled={false}
-          inverted
-          renderItem={({ item }) => (
-            <Link href={`/photo/${item.id}`} asChild>
-              <Pressable style={{ width: `${100 / 4}%`, aspectRatio: 1 }}>
-                <Image
-                  source={item.image}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </Pressable>
-            </Link>
-          )}
-        />
+        {/* Header */}
+        <Animated.View style={headerStyle}>
+          <ScrollView
+            horizontal
+            style={{ height: height / 2 }}
+            snapToInterval={width}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            onScroll={onHeaderCarouselScroll}
+          >
+            <Animated.FlatList
+              ref={flatListRef}
+              style={{ width }}
+              data={photos}
+              numColumns={4}
+              contentContainerStyle={{ gap: 2 }}
+              columnWrapperStyle={{ gap: 2 }}
+              scrollEnabled={flatListScrollEnabled}
+              inverted
+              onScroll={onFlatListScroll}
+              renderItem={({ item }) => (
+                <Link href={`/photo/${item.id}`} asChild>
+                  <Pressable style={{ width: `${100 / 4}%`, aspectRatio: 1 }}>
+                    <Image
+                      source={item.image}
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  </Pressable>
+                </Link>
+              )}
+            />
+
+            <View
+              style={{
+                width,
+                height: '100%',
+                overflow: 'hidden',
+              }}
+            >
+              <Animated.Image
+                source={photos[1].image}
+                style={[
+                  {
+                    width: width,
+                    height: '100%',
+                  },
+                  animatedStyle,
+                ]}
+                resizeMode="cover"
+              />
+            </View>
+
+            <View style={{ width, height: '100%', overflow: 'hidden' }}>
+              <Animated.Image
+                source={photos[10].image}
+                style={[
+                  {
+                    width: width,
+                    height: '100%',
+                  },
+                  animatedStyle,
+                ]}
+                resizeMode="cover"
+              />
+            </View>
+          </ScrollView>
+        </Animated.View>
 
         <View
           style={{
-            width,
-            height: '100%',
-            overflow: 'hidden',
+            padding: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
+            flexDirection: 'row',
+            gap: 5,
           }}
         >
-          <Animated.Image
-            source={photos[1].image}
-            style={[
-              {
-                width: width,
-                height: '100%',
-              },
-              animatedStyle,
-            ]}
-            resizeMode="cover"
-          />
+          {Array(3)
+            .fill(0)
+            .map((item, index) => (
+              <View
+                key={index}
+                style={{
+                  width: index === headerCarouselPage ? 10 : 8,
+                  aspectRatio: 1,
+                  backgroundColor:
+                    index === headerCarouselPage ? 'black' : 'gray',
+                  borderRadius: 5,
+                }}
+              />
+            ))}
         </View>
 
-        <View style={{ width, height: '100%', overflow: 'hidden' }}>
-          <Animated.Image
-            source={photos[10].image}
-            style={[
-              {
-                width: width,
-                height: '100%',
-              },
-              animatedStyle,
-            ]}
-            resizeMode="cover"
-          />
-        </View>
-      </ScrollView>
+        <Carousel title="Albums" photos={photos.slice(0, 6)} />
+        <Carousel title="People" photos={photos.slice(3, 6)} />
+        <Carousel title="Featured" photos={photos.slice(6, 10)} />
 
-      <View
-        style={{
-          padding: 10,
-          justifyContent: 'center',
-          alignItems: 'center',
-          flexDirection: 'row',
-          gap: 5,
-        }}
-      >
-        {Array(3)
-          .fill(0)
-          .map((item, index) => (
-            <View
-              key={index}
-              style={{
-                width: index === headerCarouselPage ? 10 : 8,
-                aspectRatio: 1,
-                backgroundColor:
-                  index === headerCarouselPage ? 'black' : 'gray',
-                borderRadius: 5,
-              }}
-            />
-          ))}
-      </View>
-
-      <Carousel title="Albums" photos={photos.slice(0, 6)} />
-      <Carousel title="People" photos={photos.slice(3, 6)} />
-      <Carousel title="Featured" photos={photos.slice(6, 10)} />
-
-      <StatusBar style="auto" />
-    </ScrollView>
+        <StatusBar style="auto" />
+      </Animated.ScrollView>
+    </GestureDetector>
   );
 }
 
